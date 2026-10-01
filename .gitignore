@@ -1,0 +1,6 @@
+github_account.txt
+github_token.txt
+clash_URL.txt
+*.deb
+__pycache__/
+ssh_password.txt
