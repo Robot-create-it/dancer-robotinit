@@ -27,7 +27,16 @@ if [[ ${1:-} == --inspect ]]; then
   ssh -p "$port" "$target" 'printf "SYSTEM\n"; cat /etc/os-release; printf "ARCH\n"; uname -m; dpkg --print-architecture; printf "TOOLS\n"; command -v python3 git curl apt-get systemctl gh clash-verge verge-mihomo || true; printf "INIT\n"; ps -p 1 -o comm=; printf "DESKTOP\n"; ls /usr/share/xsessions /usr/share/wayland-sessions 2>/dev/null || true; printf "DEPENDENCIES\n"; apt-cache policy libwebkit2gtk-4.1-0 libgtk-3-0 gh python3-yaml; printf "ROUTES\n"; ip route show; printf "PORTS\n"; ss -ltn; printf "GITHUB_NETWORK\n"; if command -v curl >/dev/null; then curl -I -sS --max-time 15 https://api.github.com; else printf "curl 未安装，跳过网络检查\n"; fi'
   exit 0
 fi
-if [[ ${1:-} != --local ]]; then resolve_target "$@"; fi
+if [[ ${1:-} != --local ]]; then
+  bash "$BASE/ensure_host_dependencies.sh" gpg curl python3 ssh scp sha256sum git tar
+  resolve_target "$@"
+fi
+if [[ ${1:-} != --local ]]; then
+  bash "$BASE/prepare_config.sh"
+fi
+if [[ ${1:-} != --local ]]; then
+  bash "$BASE/fetch_installers.sh"
+fi
 [[ -s "$BASE/github_token.txt" ]] || fail '需要自动登录 GitHub：请先在本目录创建 github_token.txt，放一行 Token'
 for file in "$CODE" "$CLASH" github_account.txt clash_URL.txt github_code.txt configure_robot.py clone_robot.py; do
   [[ -f "$BASE/$file" ]] || fail "缺少文件：$file"

@@ -1,147 +1,126 @@
 # 机器人一键初始化
 
-没有默认机器人地址。无参数运行时依次输入机器人 IP（或主机名）和 SSH 用户名，随后按 SSH 提示输入密码（输入不显示）。支持无线或有线 SSH。
+在电脑上 clone 本仓库，运行一个命令，按提示输入机器人地址和密码，即可安装 VS Code、Clash Verge，配置共享代理、登录共享 GitHub 账号，并下载机器人代码。
 
-只读检查（不上传、不安装、不修改机器人配置、不调用 sudo）：
+安装包由脚本自动从本仓库的 GitHub Releases 下载，不需要手动寻找 `.deb` 文件。共享 GitHub 账号和代理配置通过加密包提供，解密密码请向仓库维护者获取。
+
+## 使用前准备
+
+- **电脑**：推荐 Ubuntu/Debian，能够联网，并有 sudo 权限。脚本会检查所需工具，缺少 gpg、curl、Python 3、SSH 等工具时自动安装，可能需要输入电脑的 sudo 密码。
+- **机器人**：ARM64 Ubuntu/Debian、systemd、Python 3，能够访问 apt 软件源和代理订阅服务器。已检查的机器人环境为 Ubuntu 22.04.5 LTS / ARM64。
+- **登录信息**：准备机器人 IP、SSH 用户名和 SSH 密码；机器人登录用户需要 sudo 权限。下载代码的固定目录为 `/home/booster/Workspace`，建议使用 `booster` 用户，并确认该用户有该目录的写权限。
+- **共享配置密码**：向维护者获取，用于解密仓库中的 `shared-config.tar.gz.gpg`。它与机器人 SSH 密码是两个不同的密码。
+- **先退出机器人上正在运行的 Clash Verge**，否则脚本会停止并提示关闭应用后重试。
+
+无线和有线 SSH 都可以。机器人也必须能联网：仅有 SSH 连接不能保证可以下载依赖和订阅。
+
+## 第一步：运行初始化命令
+
+在 clone 下来的 `dancer-robotinit` 目录执行：
 
 ```bash
-./init_robot.sh --inspect
+bash init_robot.sh
 ```
 
-正式安装与配置（会修改机器人，仅在准备好后由你执行）：
+按提示输入以下信息：
+
+1. **电脑的 sudo 密码**：仅当电脑缺少工具、需要自动安装时出现。
+2. **机器人 IP**：输入你当前要配置的机器人地址，没有默认 IP。
+3. **机器人 SSH 用户名**：通常输入 `booster`。
+4. **共享配置解密密码**：输入维护者提供的密码。脚本会得到共享 GitHub Token、Git 姓名邮箱和代理订阅，不需要自己再填写这些信息。
+5. **SSH 主机指纹确认**：第一次连接可能出现；核对目标后输入 `yes`。
+6. **机器人 SSH 密码**：用于登录机器人。
+7. **机器人的 sudo 密码**：用于安装软件和配置后台服务，可能与 SSH 密码相同，也可能被多次询问。
+
+密码输入时不会显示字符或星号，这是正常现象。电脑下载两个安装包后才连接机器人，请等待下载完成，不要提前关闭终端。
+
+首次运行时共享配置会解密到电脑上的本仓库目录，之后会复用，因此再次运行通常不再询问解密密码。安装包已存在且校验通过时也不会重复下载。
+
+如果没有收到解密密码，先联系维护者。如果脚本改为要求填写 Git 姓名、邮箱、Token 和订阅地址，说明当前 clone 的仓库没有共享加密包或包内配置不完整；请联系维护者更新仓库，或按提示填写自己的配置。
+
+## 机器人会按顺序做什么
+
+1. 接收电脑传来的 VS Code、Clash Verge 安装包和配置文件。
+2. 检查安装条件，安装 VS Code、Clash Verge 和所需依赖。
+3. 下载代理订阅，配置 Clash Verge 和后台代理。
+4. 配置 Git 姓名和邮箱，配置终端代理环境。
+5. 启动后台代理，并设置开机自动启动。
+6. 使用共享 Token 登录 GitHub，配置 HTTPS 下载和推送认证。
+7. 读取 `github_code.txt`，将仓库代码下载到 `/home/booster/Workspace/仓库名`。
+8. 检查 GitHub 连通性，显示完成信息，清理临时安装文件。
+
+默认下载 `github_code.txt` 中仓库的默认分支，不编译代码，也不自动下载子模块。目标目录已是同一仓库时跳过，不自动 pull；若目录被其他文件或不同仓库占用，会报错停止。
+
+## 第二步：确认完成
+
+脚本显示“初始化完成”后，重新 SSH 登录机器人，终端代理会自动生效。
+
+在机器人终端执行以下命令，可检查代理服务、GitHub 登录和下载目录：
 
 ```bash
-./init_robot.sh
+sudo systemctl status robot-init-proxy --no-pager
+gh auth status
+ls /home/booster/Workspace
 ```
 
-指定其他目标：
+若想让当前机器人终端立即使用代理，可以执行：
 
 ```bash
-./init_robot.sh robot@192.168.1.100
+source ~/.config/robot-init/robot-proxy.sh
 ```
 
-SSH 非默认端口示例：`./init_robot.sh robot@192.168.1.100 2222`。
-脚本自动通过 SCP 上传目录中的两个 deb 和配置文件，SSH 登录机器人完成安装。
-若已把这些文件和三个脚本放到机器人同一目录，也可以运行 `bash init_robot.sh --local`。
-请使用机器人实际桌面用户登录，不能用 root；配置写入该用户的 HOME。
-第一次 SSH 连接可能要求确认主机指纹，随后可能要求 SSH 密码和 sudo 密码。正式初始化复用一个 SSH 连接，避免上传和后续 SSH 步骤反复要求登录密码；sudo 密码仍可能单独要求。
-若要完全无人值守，需要事先配置 SSH 密钥和适当的免密 sudo 权限。
+后台代理地址为 `127.0.0.1:7890`，开机自动启动。Clash Verge 图形界面使用独立端口 `7897`，请在机器人桌面中手动打开；VS Code 同样在桌面中使用。
 
-## 执行后机器人会按顺序做什么
+Clash Verge 图形界面与后台代理分别运行，在界面中切换节点或更新订阅不会自动同步到后台代理。后台订阅随每次初始化刷新，没有定时刷新。GitHub 登录配置用于 Git/gh 的 HTTPS 操作，VS Code Settings Sync 和扩展登录仍需要各自授权。
 
-执行 `./init_robot.sh`，输入机器人 IP、用户名和密码后：
+## 其他常用命令
 
-1. 接收电脑上的 VS Code、Clash Verge 安装包和配置文件。
-2. 检查机器人是否满足安装条件。
-3. 安装 VS Code 和 Clash Verge，以及需要的依赖软件。
-4. 从 clash_URL.txt 中的地址下载代理订阅。
-5. 配置 Clash Verge 的订阅和后台代理。
-6. 配置 Git 的姓名和邮箱。
-7. 配置终端，让以后登录机器人时自动使用代理。
-8. 启动后台代理，并设置开机自动启动。
-9. 使用 github_token.txt 中的 Token 自动登录 GitHub，配置 HTTPS 下载和推送认证。
-10. 读取 github_code.txt 中的仓库地址，将代码克隆到 /home/booster/Workspace/仓库名。
-11. 检查能否访问 GitHub，显示完成信息，删除临时安装文件。
+如果只想查看机器人信息，在电脑的本仓库目录执行：
 
-VS Code 和 Clash Verge 的安装包已在电脑上，所以机器人接收后直接安装，无需重新从网上下载。GitHub 登录成功后会自动 clone github_code.txt 中配置的代码。
+```bash
+bash init_robot.sh --inspect
+```
 
-`./init_robot.sh --inspect` 只查看机器人信息，不进行以上安装和配置。
+输入机器人 IP、用户名和密码即可。此模式只读，不上传、不安装，也不修改机器人配置；不会自动安装电脑依赖。
 
-## 输入文件
+SSH 不是默认的 22 端口时，直接指定用户名、IP 和端口：
 
-安装包使用当前目录中的：
+```bash
+bash init_robot.sh booster@机器人IP 2222
+```
 
-- `code_1.132.0-1785860155_arm64.deb`
-- `Clash.Verge_2.5.2_arm64.deb`
+## 遇到问题怎么办
 
-这些文件已在电脑上，因此流程是上传并安装，不再从互联网下载同一安装包。
-依赖包仍从机器人配置的 apt 软件源下载。
+| 提示或现象 | 处理方法 |
+| --- | --- |
+| 下载失败、Release 附件 404 | 联系维护者确认 `installers-v1` Release 已发布且两个附件上传完成；同时检查电脑能否访问 GitHub。 |
+| 解密失败 | 检查维护者提供的解密密码是否正确，必要时重新获取最新加密包。 |
+| 提示退出 Clash Verge | 在机器人桌面退出 Clash Verge，再重新运行初始化命令。 |
+| 订阅下载失败 | 检查机器人是否可以直连订阅服务器，以及订阅是否过期。此时新的后台代理尚未启动。 |
+| GitHub 登录或 clone 失败 | 联系维护者检查 Token 是否过期，以及共享账号是否有对应仓库的权限。 |
+| 已有目录或 origin 不一致 | 检查 `/home/booster/Workspace` 下同名目录，保留需要的代码后自行处理冲突，再重试。 |
+| 7890 或 19090 被占用 | 在机器人上检查占用端口的程序，处理后重试。 |
 
-`github_account.txt`（当前文件格式已通过检查）：
+出现错误时脚本通常会停止，修复问题后重新执行 `bash init_robot.sh`。已经完成的软件安装和配置修改会保留，不会自动回滚。GitHub 连通检查失败仅提示，所以还需留意最后的网络检查结果。
+
+## 仓库维护者的发布检查
+
+供其他人完整执行之前，需要完成以下准备：
+
+1. 执行 `bash make_shared_config.sh`，将生成的 `shared-config.tar.gz.gpg` 提交并推送，将解密密码单独发给使用者。
+2. 推送所有脚本：`init_robot.sh`、`ensure_host_dependencies.sh`、`prepare_config.sh`、`unlock_shared_config.sh`、`fetch_installers.sh`、`configure_robot.py`、`clone_robot.py`、`make_shared_config.sh`。
+3. 推送 `README.md`、`.gitignore`、`github_code.txt` 和 `installers.sha256`。
+4. 在本仓库创建并发布 **`installers-v1`** Release，上传以下两个原名附件：
 
 ```text
-user.name: Your Name
-user.email: your-email@example.com
+code_1.132.0-1785860155_arm64.deb
+Clash.Verge_2.5.2_arm64.deb
 ```
 
-这两个字段只设置 Git 提交身份，不代表登录 GitHub。
-自动配置 GitHub HTTPS 推送认证需要在本目录新增 `github_token.txt`，
-只放一行 GitHub classic Personal Access Token，赋予所需权限（gh 登录通常需要 repo、read:org、gist）。
-先执行 `chmod 600 github_token.txt`，不要将 Token 发到聊天中。
-脚本通过 stdin 传给 `gh auth login`，然后运行 `gh auth setup-git`。
-缺少 Token 文件时脚本在上传和安装前直接退出。
-无系统密钥环时 gh 可能将凭据保存到机器人上的明文配置文件，见官方说明：
-https://cli.github.com/manual/gh_auth_login 。已有 SSH 仓库地址不因 HTTPS 登录自动改变。
-VS Code 的 GitHub Settings Sync / 扩展登录仍需要其独立授权。
+加密配置包和 Release 附件都发布完成后，使用者才可以按上面的命令完整执行。当前下载方式要求这些 Release 附件能通过公开 HTTPS 访问。
 
-`clash_URL.txt`：一行 HTTPS Clash/Mihomo **YAML 订阅 URL**。
-脚本不会将订阅 URL、订阅正文或 Token 输出到终端。
-不支持直接返回 Base64 节点列表的订阅，请在订阅提供方取得 Clash 格式地址。
+Token 或订阅变更后，重新制作并推送加密包；更换安装包时同时更新 `installers.sha256` 和下载脚本。明文 Token、订阅和解密密码不提交到仓库。能够解密配置的人会取得其中的账号凭据。
 
-## 下载 GitHub 代码
+## 验证情况
 
-在同目录的 `github_code.txt` 中填写仓库地址，每行一个，例如：
-
-```text
-https://github.com/用户名/仓库名.git
-```
-
-支持多个仓库、空行和以 `#` 开头的注释。GitHub SSH 地址会自动转换为 HTTPS，所以无需配置 SSH 密钥。文件会随安装包一起上传，并在安装前检查格式。
-
-代理启动、GitHub Token 登录成功后，代码下载到 **`/home/booster/Workspace/仓库名`**。Workspace 不存在时自动创建；登录用户需要对此路径有写权限，使用 booster 用户即可按通常的 HOME 权限创建。私有仓库需要账号本身具有访问权限，Token 具有 repo 权限。
-
-重复执行时，如果目标目录已经是同一个 origin 的 Git 仓库，则跳过，不自动 pull、不覆盖本地修改；若目录被其他文件或不同仓库占用，则报错退出。不同所有者的同名仓库不能同时配置。克隆失败会停止初始化，并清理未完成的克隆临时目录；已成功下载的仓库会保留。
-
-只下载仓库默认分支，不执行编译、依赖安装或仓库中的脚本，也不自动下载子模块。
-
-## 代理行为
-
-- 下载订阅，保留其中的节点、代理组和规则，导入并选中 Clash Verge 配置。
-- 同时用 deb 内的 `verge-mihomo` 建立 systemd 服务 `robot-init-proxy`，开机启动。
-- SSH 终端使用本机 `127.0.0.1:7890`；HTTP 和 SOCKS5 共用该端口。
-- `.bashrc` 和 `.profile` 会加载代理环境变量；重新 SSH 登录后生效。
-  当前机器人会话可执行 `source ~/.config/robot-init/robot-proxy.sh`。
-- 代理控制接口仅绑定 `127.0.0.1:19090`；关闭 TUN 和 LAN 监听，避免改动机器人网络路由。
-- Clash Verge 桌面界面手动打开，使用独立端口 7897，不自动开启桌面系统代理或 GUI 自启动。
-  其配置与后台服务分别运行；GUI 中改节点或更新订阅不会同步到后台服务。
-- 后台订阅在每次初始化时刷新，**没有定时刷新**；订阅过期或变更后重新运行脚本。
-- 沿用订阅默认规则和默认节点，不保证所有请求都会经远端代理。
-  服务启动后脚本额外检查 GitHub 连通性，失败会明确提示。
-
-VS Code 和 Clash Verge 是桌面应用，安装可以通过 SSH 完成，使用界面需要机器人具有图形桌面。
-GUI 配置前请退出正在运行的 Clash Verge。没有桌面的机器人也可以使用后台代理和 Git，
-但桌面应用本身无法在纯 SSH 终端显示。
-
-## 前提与限制
-
-机器人须为 ARM64 Debian/Ubuntu，使用 systemd，安装 Python 3，登录用户拥有 sudo 权限。
-操作系统的软件源必须提供安装包所需的库；Clash Verge 需要 `libwebkit2gtk-4.1-0`，
-旧版系统可能无法安装，请先确认机器人系统版本（例如 `cat /etc/os-release`）。
-无线或有线 SSH 连通不等于机器人能联网：初始化前机器人必须能访问 apt 软件源和订阅服务器。
-脚本不改 IP、路由、SSH 配置，不自动重启机器人。
-
-重复执行会更新这些配置；被修改的已有文件旁会生成 `.bak.时间戳` 备份。
-远端上传临时目录结束后删除；订阅/代理配置和认证日志保存在机器人用户目录，权限限制为用户本人。
-脚本失败会退出，不提供全流程事务回滚；已经安装的软件和写入的配置可能保留。
-
-检查和停止后台代理：
-
-```bash
-sudo systemctl status robot-init-proxy
-sudo journalctl -u robot-init-proxy -n 50
-sudo systemctl disable --now robot-init-proxy
-```
-
-日志可能包含节点或订阅信息，分享前请自行脱敏。
-停止服务后终端代理环境变量仍在，如需停用，删除 `.bashrc`/`.profile` 的 Robot initialization proxy
-加载行，重新登录（或在当前会话 unset 对应大小写代理环境变量）。
-
-## 已做验证
-
-本机验证 Bash 语法、输入文件格式，并以模拟订阅在临时 HOME 验证配置生成及重复执行。
-代理配置生成使用模拟订阅测试；用户提供了机器人只读检查结果。未在本机安装 ARM64 软件，也未使用真实订阅或 GitHub Token 发起请求。
-最终安装和实际节点连通性必须在目标机器人上验证。
-
-Clash Verge 2.5.2 配置字段参考官方源码：
-https://github.com/clash-verge-rev/clash-verge-rev/tree/v2.5.2/src-tauri/src/config
-
+已完成本机 Bash 语法检查、模拟配置生成、克隆流程测试、模拟凭据加解密、安装包校验及电脑依赖自动安装的模拟测试。已收到机器人只读环境检查结果；尚未在真实机器人上完整执行初始化，最终安装和节点连通性需在目标机器人上确认。

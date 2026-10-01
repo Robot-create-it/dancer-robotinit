@@ -4,3 +4,4 @@ clash_URL.txt
 *.deb
 __pycache__/
 ssh_password.txt
+.shared-config.*.gpg
